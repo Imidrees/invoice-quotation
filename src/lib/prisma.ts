@@ -1,18 +1,18 @@
-import type { PrismaClient } from '@prisma/client';
+let prisma
 
-declare global {
-  // eslint-disable-next-line no-var
-  var prisma: PrismaClient | undefined;
+if (process.env.NODE_ENV === 'production') {
+  prisma = new (require('@prisma/client').PrismaClient)()
+} else {
+  if (!global.prisma) {
+    global.prisma = new (require('@prisma/client').PrismaClient)({
+      datasources: {
+        db: {
+          url: process.env.DATABASE_URL || "file:./prisma/dev.db"
+        }
+      }
+    })
+  }
+  prisma = global.prisma
 }
 
-export const prisma =
-  global.prisma ||
-  new (require('@prisma/client').PrismaClient)({
-    log:
-      process.env.NODE_ENV === 'development'
-        ? ['warn', 'error']
-        : ['error'],
-  });
-
-if (process.env.NODE_ENV !== 'production') {
-  global.prisma = prisma;
+export { prisma }
