@@ -1,7 +1,3 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
-
 * {
   margin: 0;
   padding: 0;
@@ -27,7 +23,6 @@ code {
     monospace;
 }
 
-/* Arabic text support */
 html[dir='rtl'] {
   direction: rtl;
   text-align: right;
@@ -39,7 +34,6 @@ html[dir='rtl'] textarea {
   direction: rtl;
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
