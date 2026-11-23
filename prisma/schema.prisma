@@ -1,0 +1,241 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Shared authentication
+model User {
+  id        String   @id @default(cuid())
+  username  String   @unique
+  password  String   // bcrypt hashed
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  sessions  Session[]
+  activityLogs ActivityLog[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+// Company management
+model Company {
+  id                    String   @id @default(cuid())
+  name                  String   // English
+  nameArabic            String   // Arabic
+  crNumber              String   @unique
+  vatNumber             String   @unique
+  address               String
+  addressArabic         String
+  email                 String
+  phone                 String
+  website               String?
+  bankName              String
+  bankNameArabic        String
+  accountName           String
+  accountNameArabic     String
+  accountNumber         String
+  ibanNumber            String
+  swiftCode             String?
+  logoBase64            String?  @db.Text // Embedded logo from PDF
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  invoices              Invoice[]
+  quotations            Quotation[]
+  customers             Customer[]
+  settings              CompanySetting?
+  activityLogs          ActivityLog[]
+}
+
+model CompanySetting {
+  id              String   @id @default(cuid())
+  companyId       String   @unique
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vatRate         Decimal  @default(15.00) @db.Decimal(5, 2)
+  currency        String   @default("SAR")
+  timezone        String   @default("Asia/Riyadh")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Customers
+model Customer {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name            String
+  businessName    String?
+  contactPerson   String?
+  phone           String?
+  email           String?
+  address         String?
+  vatNumber       String?
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  invoices        Invoice[]
+  quotations      Quotation[]
+
+  @@index([companyId])
+  @@unique([companyId, name])
+}
+
+// Invoices
+model Invoice {
+  id                String   @id @default(cuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  invoiceNumber     String
+  invoiceDate       DateTime
+  dueDate           DateTime?
+  poNumber          String?
+
+  // Customer snapshot (for historical accuracy)
+  customerSnapshot  String   @db.Text // JSON snapshot
+
+  subtotal          Decimal  @db.Decimal(15, 2)
+  vatAmount         Decimal  @db.Decimal(15, 2)
+  grandTotal        Decimal  @db.Decimal(15, 2)
+
+  qrPayload         String?  @db.Text // QR TLV payload
+  pdfPath           String?  // Path to generated PDF
+
+  status            String   @default("saved") // draft, saved, archived
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  lineItems         InvoiceLineItem[]
+  versions          DocumentVersion[]
+  activityLogs      ActivityLog[]
+
+  @@index([companyId])
+  @@index([invoiceNumber, companyId])
+  @@unique([companyId, invoiceNumber])
+}
+
+model InvoiceLineItem {
+  id              String   @id @default(cuid())
+  invoiceId       String
+  invoice         Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  lineNumber      Int
+  description     String   @db.Text
+  quantity        Decimal  @db.Decimal(15, 4)
+  rate            Decimal  @db.Decimal(15, 2)
+  amount          Decimal  @db.Decimal(15, 2) // quantity * rate
+
+  @@index([invoiceId])
+}
+
+// Quotations
+model Quotation {
+  id                String   @id @default(cuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customerId        String?
+  customer          Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+
+  quotationRef      String
+  quotationDate     DateTime
+  validUntil        DateTime?
+  projectName       String?
+  subject           String?   @db.Text
+  introText         String?   @db.Text
+
+  // Customer snapshot (for historical accuracy)
+  customerSnapshot  String   @db.Text // JSON snapshot
+
+  subtotal          Decimal  @db.Decimal(15, 2)
+  vatAmount         Decimal  @db.Decimal(15, 2)
+  grandTotal        Decimal  @db.Decimal(15, 2)
+
+  pdfPath           String?  // Path to generated PDF
+
+  status            String   @default("saved") // draft, saved, archived
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  lineItems         QuotationLineItem[]
+  versions          DocumentVersion[]
+  activityLogs      ActivityLog[]
+
+  @@index([companyId])
+  @@index([quotationRef, companyId])
+  @@unique([companyId, quotationRef])
+}
+
+model QuotationLineItem {
+  id              String   @id @default(cuid())
+  quotationId     String
+  quotation       Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  lineNumber      Int
+  description     String   @db.Text
+  unit            String?
+  quantity        Decimal  @db.Decimal(15, 4)
+  rate            Decimal  @db.Decimal(15, 2)
+  amount          Decimal  @db.Decimal(15, 2) // quantity * rate
+
+  @@index([quotationId])
+}
+
+// Document versioning
+model DocumentVersion {
+  id              String   @id @default(cuid())
+  invoiceId       String?
+  invoice         Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  quotationId     String?
+  quotation       Quotation? @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+
+  versionNumber   Int
+  documentData    String   @db.Text // JSON snapshot of document state
+  pdfPath         String?
+  createdAt       DateTime @default(now())
+
+  @@index([invoiceId])
+  @@index([quotationId])
+}
+
+// Activity log
+model ActivityLog {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  action          String   // "document_created", "document_updated", "pdf_generated", "archived", etc.
+  documentType    String?  // "invoice" or "quotation"
+  documentId      String?
+  details         String?  @db.Text
+
+  createdAt       DateTime @default(now())
+
+  @@index([userId])
+  @@index([companyId])
+  @@index([createdAt])
+}
+
+// Application settings
+model ApplicationSetting {
+  id              String   @id @default(cuid())
+  key             String   @unique
+  value           String   @db.Text
+  updatedAt       DateTime @updatedAt
+}
